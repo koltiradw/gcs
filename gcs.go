@@ -1,4 +1,4 @@
-package main
+package gcs
 
 import (
         "os"
@@ -43,7 +43,7 @@ func removeGlob(path string) (err error) {
 
 func dumpCoverage() {
 	coverage.WriteCountersDir(os.Getenv("GOCOVERDIR"))
-        coverage.ClearCounters()
+        //coverage.ClearCounters()
 }
 
 func getLCOV() []byte {
@@ -84,7 +84,7 @@ func handleRequest(conn net.Conn){
 	buffer := make([]byte, 8)
 	_, err := conn.Read(buffer)
 	if err != nil {
-		return
+		log.Fatal(err)
 	}
 	
 	cmd := buffer[5]
@@ -97,8 +97,15 @@ func handleRequest(conn net.Conn){
 		conn.Write(COVERAGE_INFO_RESPONSE)
 		conn.Write(size)
 		conn.Write(lcov)
-		conn.Write(CMD_OK_RESPONSE)
 	}
+
+	reset_byte := buffer[7]
+
+	if int(reset_byte) != 0 {
+		coverage.ClearCounters()
+	}
+	
+	conn.Write(CMD_OK_RESPONSE)
 }
 
 func init() {

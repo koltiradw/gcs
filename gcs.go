@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"io/ioutil"
+	"encoding/binary"
 )
 
 const HOST = "localhost"
@@ -22,9 +23,9 @@ const LCOV_FILE = "coverage.lcov"
 // WuppieFuzz proto for lcov coverage client
 const HEADER_SIZE = 8
 var REQUEST_HEADER = [...]byte{0x01, 0xC0, 0xC0, 0x10, 0x07}
-const BLOCK_CMD_DUMP = 64
-var COVERAGE_INFO_RESPONSE = [...]byte{0x11}
-var CMD_OK_RESPONSE = [...]byte{0x20}
+const BLOCK_CMD_DUMP = 0x40
+var COVERAGE_INFO_RESPONSE = []byte{0x11}
+var CMD_OK_RESPONSE = []byte{0x20}
 
 func removeGlob(path string) (err error) {
 	contents, err := filepath.Glob(path)
@@ -93,7 +94,12 @@ func handleRequest(conn net.Conn){
 	if int(cmd) == BLOCK_CMD_DUMP {
 		dumpCoverage()
 		lcov := getLCOV()
+		size := make([]byte, 4)
+		binary.LittleEndian.PutUint32(size, uint32(len(lcov)))
+		conn.Write(COVERAGE_INFO_RESPONSE)
+		conn.Write(size)
 		conn.Write(lcov)
+		conn.Write(CMD_OK_RESPONSE)
 	}
 
 	conn.Close()

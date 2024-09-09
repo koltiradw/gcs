@@ -1,4 +1,4 @@
-package gcs
+package main
 
 import (
         "os"
@@ -56,7 +56,7 @@ func getLCOV() []byte {
 	if err != nil {
   		log.Fatal(err)
 	}
-	fmt.Println(string(output))
+
 
 	//gen lcov file
 	path_to_lcov_file := filepath.Join(cover_dir, LCOV_FILE)
@@ -66,7 +66,7 @@ func getLCOV() []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(string(output))
+
 
 	content, err := ioutil.ReadFile(path_to_lcov_file)
 
@@ -81,7 +81,7 @@ func getLCOV() []byte {
 }
 
 func handleRequest(conn net.Conn){
-	buffer := make([]byte, 64)
+	buffer := make([]byte, 8)
 	_, err := conn.Read(buffer)
 	if err != nil {
 		log.Fatal(err)
@@ -101,9 +101,6 @@ func handleRequest(conn net.Conn){
 		conn.Write(lcov)
 		conn.Write(CMD_OK_RESPONSE)
 	}
-
-	conn.Close()
-
 }
 
 func init() {
@@ -118,12 +115,14 @@ func startCoverageServer() {
 	}
 
 	defer listen.Close()
+
+	conn, err := listen.Accept()
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+
 	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			log.Fatal(err)
-			os.Exit(1)
-		}
-		go handleRequest(conn)
+		handleRequest(conn)
 	}
 }

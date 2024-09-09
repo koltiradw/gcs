@@ -84,7 +84,7 @@ func handleRequest(conn net.Conn){
 	buffer := make([]byte, 8)
 	_, err := conn.Read(buffer)
 	if err != nil {
-		log.Fatal(err)
+		return
 	}
 	
 	cmd := buffer[5]

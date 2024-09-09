@@ -52,7 +52,7 @@ func getLCOV() []byte {
 	path_to_proffile := filepath.Join(cover_dir, PROF_FILE)
 	cmd := exec.Command("go", "tool", "covdata", "textfmt", fmt.Sprintf("-i=%s", cover_dir), fmt.Sprintf("-o=%s", path_to_proffile))
 	
-	output, err := cmd.Output()
+	_, err := cmd.Output()
 	if err != nil {
   		log.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func getLCOV() []byte {
 	path_to_lcov_file := filepath.Join(cover_dir, LCOV_FILE)
 	cmd = exec.Command("gcov2lcov", fmt.Sprintf("-infile=%s", path_to_proffile), fmt.Sprintf("-outfile=%s", path_to_lcov_file))	
 	
-	output, err = cmd.Output()
+	_, err = cmd.Output()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -88,8 +88,6 @@ func handleRequest(conn net.Conn){
 	}
 	
 	cmd := buffer[5]
-	
-	fmt.Printf("%s", buffer)
 
 	if int(cmd) == BLOCK_CMD_DUMP {
 		dumpCoverage()

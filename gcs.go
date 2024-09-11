@@ -1,13 +1,13 @@
 package gcs
 
 import (
-	"gcs/coverage"
-	"gcs/coverage/cformat"
-	"gcs/coverage/cmerge"
-	"gcs/coverage/decodecounter"
-	"gcs/coverage/decodemeta"
-	"gcs/coverage/slicereader"
-	"gcs/coverage/slicewriter"
+	"github.com/koltiradw/gcs/coverage"
+	"github.com/koltiradw/gcs/coverage/cformat"
+	"github.com/koltiradw/gcs/coverage/cmerge"
+	"github.com/koltiradw/gcs/coverage/decodecounter"
+	"github.com/koltiradw/gcs/coverage/decodemeta"
+	"github.com/koltiradw/gcs/coverage/slicereader"
+	"github.com/koltiradw/gcs/coverage/slicewriter"
 	"bufio"
 	"bytes"
 	"encoding/binary"

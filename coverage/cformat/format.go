@@ -31,8 +31,8 @@ package cformat
 // emit coverage percentages.
 
 import (
-	"gcs/coverage"
-	"gcs/coverage/cmerge"
+	"github.com/koltiradw/gcs/coverage"
+	"github.com/koltiradw/gcs/coverage/cmerge"
 	"cmp"
 	"fmt"
 	"io"

@@ -11,9 +11,9 @@ package decodemeta
 import (
 	"encoding/binary"
 	"fmt"
-	"gcs/coverage"
-	"gcs/coverage/slicereader"
-	"gcs/coverage/stringtab"
+	"github.com/koltiradw/gcs/coverage"
+	"github.com/koltiradw/gcs/coverage/slicereader"
+	"github.com/koltiradw/gcs/coverage/stringtab"
 	"io"
 	"os"
 )

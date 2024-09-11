@@ -1,25 +1,27 @@
 package gcs
 
 import (
+	"gcs/coverage"
+	"gcs/coverage/cformat"
+	"gcs/coverage/cmerge"
+	"gcs/coverage/decodecounter"
+	"gcs/coverage/decodemeta"
+	"gcs/coverage/slicereader"
+	"gcs/coverage/slicewriter"
 	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime/coverage"
-	"os/signal"
-	"context"
+	cover "runtime/coverage"
 )
 
 const HOST = "localhost"
 const TYPE = "tcp"
 const PORT = "3001"
-
-const PROF_FILE = "coverage.profile"
 
 // WuppieFuzz proto for lcov coverage client
 const HEADER_SIZE = 8
@@ -31,53 +33,137 @@ const BLOCK_CMD_DUMP = 0x40
 var COVERAGE_INFO_RESPONSE = []byte{0x11}
 var CMD_OK_RESPONSE = []byte{0x20}
 
-func removeGlob(path string) (err error) {
-	contents, err := filepath.Glob(path)
-	if err != nil {
-		return
-	}
-	for _, item := range contents {
-		err = os.RemoveAll(item)
-		if err != nil {
-			return
+type pkfunc struct {
+	pk, fcn uint32
+}
+
+type BatchCounterAlloc struct {
+	pool []uint32
+}
+
+func (ca *BatchCounterAlloc) AllocateCounters(n int) []uint32 {
+	const chunk = 8192
+	if n > cap(ca.pool) {
+		siz := chunk
+		if n > chunk {
+			siz = n
 		}
+		ca.pool = make([]uint32, siz)
 	}
-	return
+	rv := ca.pool[:n]
+	ca.pool = ca.pool[n:]
+	return rv
+}
+
+func getCounters() []byte {
+	counters_writer := &slicewriter.WriteSeeker{}
+	cover.WriteCounters(counters_writer)
+	counters_writer.Seek(0, io.SeekStart)
+	return counters_writer.BytesWritten()
+}
+
+func getMetaInfo() []byte {
+	meta_writer := &slicewriter.WriteSeeker{}
+	cover.WriteMeta(meta_writer)
+	meta_writer.Seek(0, io.SeekStart)
+	return meta_writer.BytesWritten()
 }
 
 func getLCOV() []byte {
 	//gen profile file
-	cover_dir := os.Getenv("GOCOVERDIR")
-	path_to_proffile := filepath.Join(cover_dir, PROF_FILE)
-	cmd := exec.Command("go", "tool", "covdata", "textfmt", fmt.Sprintf("-i=%s", cover_dir), fmt.Sprintf("-o=%s", path_to_proffile))
+	myformatter := cformat.NewFormatter(coverage.CtrModeAtomic)
 
-	_, err := cmd.Output()
+	pmm := make(map[pkfunc][]uint32)
+
+	counters_info := getCounters()
+
+	counters_reader := slicereader.NewReader(counters_info, false)
+
+	var cdr *decodecounter.CounterDataReader
+
+	cdf := "covcounter"
+
+	cm := cmerge.Merger{}
+	bca := BatchCounterAlloc{}
+	cdr, err := decodecounter.NewCounterDataReader(cdf, counters_reader)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("reading counter data file %s: %s", cdf, err)
+	}
+	var data decodecounter.FuncPayload
+	for {
+		ok, err := cdr.NextFunc(&data)
+		if err != nil {
+			log.Fatalf("reading counter data file %s: %v", cdf, err)
+		}
+		if !ok {
+			break
+		}
+
+		// NB: sanity check on pkg and func IDs?
+		key := pkfunc{pk: data.PkgIdx, fcn: data.FuncIdx}
+		if prev, found := pmm[key]; found {
+			// Note: no overflow reporting here.
+			if err, _ := cm.MergeCounters(data.Counters, prev); err != nil {
+				log.Fatalf("processing counter data file %s: %v", cdf, err)
+			}
+		}
+		c := bca.AllocateCounters(len(data.Counters))
+		copy(c, data.Counters)
+		pmm[key] = c
 	}
 
-	prof_file, err := os.Open(path_to_proffile)
-
+	meta_info := getMetaInfo()
+	meta_reader, err := decodemeta.NewCoverageMetaFileReader(meta_info)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("failed with: %v", err)
 	}
 
-	defer prof_file.Close()
+	payload := []byte{}
+	np := uint32(meta_reader.NumPackages())
+	for pkIdx := uint32(0); pkIdx < np; pkIdx++ {
+		var pd *decodemeta.CoverageMetaDataDecoder
+		pd, payload, err = meta_reader.GetPackageDecoder(pkIdx, payload)
+		if err != nil {
+			fmt.Printf("reading pkg %d from meta-file: %s", pkIdx, err)
+		}
+		myformatter.SetPackage(pd.PackagePath())
+		nf := pd.NumFuncs()
+		var fd coverage.FuncDesc
+		for fnIdx := uint32(0); fnIdx < nf; fnIdx++ {
+			if err := pd.ReadFunc(fnIdx, &fd); err != nil {
+				log.Fatalf("reading meta-data error : %v", err)
+			}
+			key := pkfunc{pk: pkIdx, fcn: fnIdx}
+			counters, haveCounters := pmm[key]
+			for i := 0; i < len(fd.Units); i++ {
+				u := fd.Units[i]
+				// Skip units with non-zero parent (no way to represent
+				// these in the existing format).
+				if u.Parent != 0 {
+					continue
+				}
+				count := uint32(0)
+				if haveCounters {
+					count = counters[i]
+				}
+				myformatter.AddUnit(fd.Srcfile, fd.Funcname, fd.Lit, u, count)
+			}
+		}
+	}
 
-	prof_reader := bufio.NewReader(prof_file)
+	prof_buffer := bytes.NewBuffer(nil)
+	prof_writer := bufio.NewWriter(prof_buffer)
+	myformatter.EmitTextual(prof_writer)
 
 	lcov_buffer := bytes.NewBuffer(nil)
-	writer := bufio.NewWriter(lcov_buffer)
+	lcov_writer := bufio.NewWriter(lcov_buffer)
 
-	ConvertCoverage(prof_reader, writer)
-
-	removeGlob(fmt.Sprintf("%s/covcounters*", cover_dir))
+	ConvertCoverage(prof_buffer, lcov_writer)
 
 	return lcov_buffer.Bytes()
-
 }
 
-func handleRequest(_ context.Context, conn net.Conn) {
+func handleRequest(conn net.Conn) {
 	buffer := make([]byte, 8)
 	_, err := conn.Read(buffer)
 	if err != nil {
@@ -87,7 +173,6 @@ func handleRequest(_ context.Context, conn net.Conn) {
 	cmd := buffer[5]
 
 	if int(cmd) == BLOCK_CMD_DUMP {
-		coverage.WriteCountersDir(os.Getenv("GOCOVERDIR"))
 		lcov := getLCOV()
 		size := make([]byte, 4)
 		binary.LittleEndian.PutUint32(size, uint32(len(lcov)))
@@ -99,7 +184,7 @@ func handleRequest(_ context.Context, conn net.Conn) {
 	reset_byte := buffer[7]
 
 	if int(reset_byte) != 0 {
-		coverage.ClearCounters()
+		cover.ClearCounters()
 	}
 
 	conn.Write(CMD_OK_RESPONSE)
@@ -110,22 +195,20 @@ func init() {
 }
 
 func startCoverageServer() {
-	ctx := context.Background()
-	ctx, _ = signal.NotifyContext(ctx, os.Interrupt, os.Kill)
-
-	lc := new(net.ListenConfig)
-	listen, err := lc.Listen(ctx, TYPE, HOST+ ":" +PORT)
+	listen, err := net.Listen(TYPE, HOST+":"+PORT)
 	if err != nil {
 		log.Fatal(err)
+		os.Exit(1)
 	}
+
 	defer listen.Close()
 
-	conn, err := listen.Accept()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for ctx.Err() == nil {
-		handleRequest(ctx, conn)
+	for {
+		conn, err := listen.Accept()
+		if err != nil {
+			log.Fatal(err)
+			os.Exit(1)
+		}
+		handleRequest(conn)
 	}
 }

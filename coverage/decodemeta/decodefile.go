@@ -76,7 +76,6 @@ func (r *CoverageMetaFileReader) readFileHeader() error {
 		return fmt.Errorf("meta-data file withn unknown version %d (expected %d)", r.hdr.Version, coverage.MetaFileVersion)
 	}
 
-	fmt.Printf("%d\n", r.hdr.Entries)
 	// Read package offsets for good measure
 	r.pkgOffsets = make([]uint64, r.hdr.Entries)
 	for i := uint64(0); i < r.hdr.Entries; i++ {

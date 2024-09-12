@@ -11,7 +11,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -41,6 +40,8 @@ type BatchCounterAlloc struct {
 	pool []uint32
 }
 
+var meta_reader *decodemeta.CoverageMetaFileReader = nil
+
 func (ca *BatchCounterAlloc) AllocateCounters(n int) []uint32 {
 	const chunk = 8192
 	if n > cap(ca.pool) {
@@ -62,11 +63,11 @@ func getCounters() []byte {
 	return counters_writer.BytesWritten()
 }
 
-func getMetaInfo() []byte {
+func getMetaReader() (*decodemeta.CoverageMetaFileReader, error) {
 	meta_writer := &slicewriter.WriteSeeker{}
 	cover.WriteMeta(meta_writer)
 	meta_writer.Seek(0, io.SeekStart)
-	return meta_writer.BytesWritten()
+	return decodemeta.NewCoverageMetaFileReader(meta_writer.BytesWritten())
 }
 
 func getLCOV() []byte {
@@ -112,10 +113,12 @@ func getLCOV() []byte {
 		pmm[key] = c
 	}
 
-	meta_info := getMetaInfo()
-	meta_reader, err := decodemeta.NewCoverageMetaFileReader(meta_info)
 	if err != nil {
 		log.Fatalf("failed with: %v", err)
+	}
+	
+	if meta_reader == nil {
+		meta_reader, err = getMetaReader()
 	}
 
 	payload := []byte{}
@@ -124,7 +127,7 @@ func getLCOV() []byte {
 		var pd *decodemeta.CoverageMetaDataDecoder
 		pd, payload, err = meta_reader.GetPackageDecoder(pkIdx, payload)
 		if err != nil {
-			fmt.Printf("reading pkg %d from meta-file: %s", pkIdx, err)
+			log.Fatalf("reading pkg %d from meta-file: %s", pkIdx, err)
 		}
 		myformatter.SetPackage(pd.PackagePath())
 		nf := pd.NumFuncs()
@@ -157,18 +160,19 @@ func getLCOV() []byte {
 
 	lcov_buffer := bytes.NewBuffer(nil)
 	lcov_writer := bufio.NewWriter(lcov_buffer)
+	
+	prof_reader := bufio.NewReader(prof_buffer)
 
-	ConvertCoverage(prof_buffer, lcov_writer)
-
+	ConvertCoverage(prof_reader, lcov_writer)
 	return lcov_buffer.Bytes()
 }
 
 func handleRequest(conn net.Conn) {
 	buffer := make([]byte, 8)
 	_, err := conn.Read(buffer)
-	if err != nil {
-		log.Fatal(err)
-	}
+        if err != nil {
+            log.Fatal(err)
+        }	
 
 	cmd := buffer[5]
 
@@ -190,7 +194,7 @@ func handleRequest(conn net.Conn) {
 	conn.Write(CMD_OK_RESPONSE)
 }
 
-func init() {
+func init() {	
 	go startCoverageServer()
 }
 
@@ -202,13 +206,14 @@ func startCoverageServer() {
 	}
 
 	defer listen.Close()
+	
+	conn, err := listen.Accept()
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}			
 
-	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			log.Fatal(err)
-			os.Exit(1)
-		}
+	for {	
 		handleRequest(conn)
 	}
 }

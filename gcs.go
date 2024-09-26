@@ -18,7 +18,7 @@ import (
 	cover "runtime/coverage"
 )
 
-const HOST = "localhost"
+const HOST = "0.0.0.0"
 const TYPE = "tcp"
 const PORT = "3001"
 

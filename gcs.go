@@ -1,6 +1,9 @@
 package gcs
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/binary"
 	"github.com/koltiradw/gcs/coverage"
 	"github.com/koltiradw/gcs/coverage/cformat"
 	"github.com/koltiradw/gcs/coverage/cmerge"
@@ -8,9 +11,6 @@ import (
 	"github.com/koltiradw/gcs/coverage/decodemeta"
 	"github.com/koltiradw/gcs/coverage/slicereader"
 	"github.com/koltiradw/gcs/coverage/slicewriter"
-	"bufio"
-	"bytes"
-	"encoding/binary"
 	"io"
 	"log"
 	"net"
@@ -116,7 +116,7 @@ func getLCOV() []byte {
 	if err != nil {
 		log.Fatalf("failed with: %v", err)
 	}
-	
+
 	if meta_reader == nil {
 		meta_reader, err = getMetaReader()
 	}
@@ -160,7 +160,7 @@ func getLCOV() []byte {
 
 	lcov_buffer := bytes.NewBuffer(nil)
 	lcov_writer := bufio.NewWriter(lcov_buffer)
-	
+
 	prof_reader := bufio.NewReader(prof_buffer)
 
 	ConvertCoverage(prof_reader, lcov_writer)
@@ -170,9 +170,9 @@ func getLCOV() []byte {
 func handleRequest(conn net.Conn) {
 	buffer := make([]byte, 8)
 	_, err := conn.Read(buffer)
-        if err != nil {
-            log.Fatal(err)
-        }	
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	cmd := buffer[5]
 
@@ -194,7 +194,7 @@ func handleRequest(conn net.Conn) {
 	conn.Write(CMD_OK_RESPONSE)
 }
 
-func init() {	
+func init() {
 	go startCoverageServer()
 }
 
@@ -206,14 +206,14 @@ func startCoverageServer() {
 	}
 
 	defer listen.Close()
-	
+
 	conn, err := listen.Accept()
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)
-	}			
+	}
 
-	for {	
+	for {
 		handleRequest(conn)
 	}
 }

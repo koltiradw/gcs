@@ -212,16 +212,7 @@ func parseCoverage(coverage io.Reader) (map[string][]*block, error) {
 		if strings.HasPrefix(line, "mode:") {
 			continue
 		}
-		if f, b, err := parseCoverageLine(line); err == nil {
-			f, err := findFile(f)
-			if err != nil {
-				log.Printf("warn: %v", err)
-				continue
-			}
-
-			f = getCoverallsSourceFileName(f)
-
-			// Make sure the filePath is a key in the map.
+		if f, b, err := parseCoverageLine(line); err == nil {	
 			if _, found := blocks[f]; !found {
 				blocks[f] = []*block{}
 			}

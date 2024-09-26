@@ -8,8 +8,8 @@ package cmerge
 // with merging of counter data for a given function.
 
 import (
-	"github.com/koltiradw/gcs/coverage"
 	"fmt"
+	"github.com/koltiradw/gcs/coverage"
 	"math"
 )
 

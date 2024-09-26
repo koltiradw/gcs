@@ -11,14 +11,14 @@ package decodemeta
 // separate self-contained meta-data section for each Go package.
 
 import (
-	"github.com/koltiradw/gcs/coverage"
-	"github.com/koltiradw/gcs/coverage/slicereader"
-	"github.com/koltiradw/gcs/coverage/stringtab"
 	"bufio"
 	"bytes"
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
+	"github.com/koltiradw/gcs/coverage"
+	"github.com/koltiradw/gcs/coverage/slicereader"
+	"github.com/koltiradw/gcs/coverage/stringtab"
 	"os"
 )
 
